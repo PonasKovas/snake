@@ -1,7 +1,3 @@
-extern crate term_size;
-extern crate rand;
-extern crate crossterm_input;
-
 use rand::prelude::*;
 use crossterm_input::{input, AsyncReader, RawScreen, InputEvent, KeyEvent};
 use std::thread::sleep;
