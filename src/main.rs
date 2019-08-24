@@ -1,251 +1,267 @@
+use crossterm_input::{input, AsyncReader, InputEvent, KeyEvent, RawScreen};
 use rand::prelude::*;
-use crossterm_input::{input, AsyncReader, RawScreen, InputEvent, KeyEvent};
+use std::collections::{HashSet, VecDeque};
 use std::thread::sleep;
 use std::time::Duration;
 
-
 /// A collection of all the game's components.
 pub struct Game {
-	snake: Snake,
-	food_pos: (u16, u16),
-	speed: f32,
-	input: AsyncReader,
-	ended: bool,
-	pub score: u32
+    snake: Snake,
+    food_pos: (u16, u16),
+    speed: f32, // How many times per second the snake moves and the screen is redrawed
+    input: AsyncReader,
+    ended: bool,
+    pub score: u32,
+    rng: rand::rngs::ThreadRng,
 }
 
 /// This struct defines the player: position, direction and stuff.
 pub struct Snake {
-	direction: Direction,
-	previous_direction: Direction,
-	parts: Vec<(u16, u16)>
+    direction: Direction,
+    parts: HashSet<(u16, u16)>,
+    ordered_parts: VecDeque<(u16, u16)>,
 }
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum Direction {
-	Left,
-	Right,
-	Up,
-	Down
+    Left,
+    Up,
+    Right,
+    Down,
 }
 
 pub enum Move {
-	Ok,
-	Crash
+    Ok,
+    Crash,
+}
+
+impl Direction {
+    pub fn is_opposite(self: &Direction, other: &Direction) -> bool {
+        (*self as i8 + 2) % 4 == *other as i8
+    }
 }
 
 impl Game {
-	pub fn new() -> Game {
-		// Initialize game
+    pub fn new() -> Game {
+        // Get input ready
+        let input = input();
+        input
+            .disable_mouse_mode()
+            .expect("Can't disable mouse mode");
 
-		// Put the terminal into raw mode and start reading input
-		RawScreen::into_raw_mode().expect("Failed to put terminal into raw mode.").disable_drop();
+        let mut initial_snake_parts = HashSet::<(u16, u16)>::new();
+        initial_snake_parts.insert((0, 0));
+        initial_snake_parts.insert((1, 0));
+        initial_snake_parts.insert((2, 0));
 
-		// Get input ready
-		let input = input();
-		input.disable_mouse_mode().expect("Can't disable mouse mode");
+        let mut initial_ordered_snake_parts = VecDeque::<(u16, u16)>::new();
+        initial_ordered_snake_parts.push_back((0, 0));
+        initial_ordered_snake_parts.push_back((1, 0));
+        initial_ordered_snake_parts.push_back((2, 0));
 
-		Game {
-			snake: Snake {
-				direction: Direction::Right,
-				previous_direction: Direction::Right,
-				parts: vec![(0,0), (1,0), (2,0)]
-			},
-			food_pos: (5, 0),
-			speed: 5.0,
-			input: input.read_async(),
-			ended: false,
-			score: 0
-			}
-	}
-	/// Handles the user input and draws frames.
-	pub fn draw(self: &mut Game) {
-		let terminal_size = get_terminal_size();
+        Game {
+            snake: Snake {
+                direction: Direction::Right,
+                parts: initial_snake_parts,
+                ordered_parts: initial_ordered_snake_parts,
+            },
+            food_pos: (5, 0),
+            speed: 5.0,
+            input: input.read_async(),
+            ended: false,
+            score: 0,
+            rng: thread_rng(),
+        }
+    }
+    /// Draws the frames.
+    pub fn draw(self: &mut Game) {
+        // handle the input
+        self.handle_input();
 
-		// Handle the input
-		self.snake.previous_direction = self.snake.direction;
-		let mut new_direction = self.snake.direction;
-		for event in &mut self.input {
-			match event {
-				// ctrl-c or Q to quit the game
-				InputEvent::Keyboard(KeyEvent::Ctrl('c')) | InputEvent::Keyboard(KeyEvent::Char('q')) => {
-					self.ended = true;
-					RawScreen::disable_raw_mode().expect("Failed to put terminal into normal mode.");
-					return;
-				},
-				// A or Left arrow - move left
-				InputEvent::Keyboard(KeyEvent::Char('a')) | InputEvent::Keyboard(KeyEvent::Left) => {
-					if self.snake.previous_direction != Direction::Right {
-						new_direction = Direction::Left;
-					}
-				},
-				// S or Down arrow - move down
-				InputEvent::Keyboard(KeyEvent::Char('s')) | InputEvent::Keyboard(KeyEvent::Down) => {
-					if self.snake.previous_direction != Direction::Up {
-						new_direction = Direction::Down;
-					}
-				},
-				// D or Right arrow - move right
-				InputEvent::Keyboard(KeyEvent::Char('d')) | InputEvent::Keyboard(KeyEvent::Right) => {
-					if self.snake.previous_direction != Direction::Left {
-						new_direction = Direction::Right;
-					}
-				},
-				// W or Up arrow - move up
-				InputEvent::Keyboard(KeyEvent::Char('w')) | InputEvent::Keyboard(KeyEvent::Up) => {
-					if self.snake.previous_direction != Direction::Down {
-						new_direction = Direction::Up;
-					}
-				},
-				_ => ()
-			}
-		}
-		self.snake.direction = new_direction;
-		// Move the snake
-		if let Move::Crash = self.move_snake() {
-			self.ended = true;
-		}
-		
-		clear_terminal();
-		// Draw the frame
-		let mut frame = String::from("");
-		
-		let status_text = format!("Score: {}", self.score);
-		frame += &(
-			"\x1b[104m\x1b[30m".to_owned() + 
-			&" ".repeat((((terminal_size.0*2) as usize - status_text.len()) as f64/2f64).floor() as usize) + 
-			&status_text + 
-			&" ".repeat((((terminal_size.0*2) as usize - status_text.len()) as f64/2f64).ceil() as usize) + 
-			"\x1b[0m\r\n"
-			);
-		
-		for y in 0..terminal_size.1-1 {
-			'column: for x in 0..terminal_size.0 { // -1 because the last line is for displaying stats
-				// Iterate throught all snake's parts to find out if there's a part on this position
-				for part in &self.snake.parts {
-					if *part == (x, y) {
-						frame += "\x1b[97m\x1b[107m  \x1b[0m"; // A white square
-						continue 'column;
-					}
-				}
+        let terminal_size = get_terminal_size();
 
-				// If there's food in this position
-				if (x, y) == self.food_pos {
-					frame += "\x1b[92m\x1b[102m  \x1b[0m"; // A light-green square
-				}
-				else {
-					frame += "  ";
-				}
-			}
-			frame += "\r\n";
-		}
-		// Remove last two characters: \r\n
-		frame.pop();
-		frame.pop();
-		print!("{}", frame);
-	}
-	/// Starts the game
-	pub fn start(self: &mut Game) {
-		loop {
-			self.draw();
-			if self.ended {
-				RawScreen::disable_raw_mode().expect("Failed to put terminal into normal mode.");
-				break;
-			}
-			sleep( Duration::from_millis( (1000f64/self.speed as f64) as u64 ) );
-		}
-	}
-	fn generate_food_pos(self: &Game) -> (u16, u16) {
-		// Get terminal size
-		let terminal_size = get_terminal_size();
-		'outer: loop {
-			let mut rng = thread_rng();
-			let food_pos: (u16, u16) = ( rng.gen_range(0, terminal_size.0) as u16, rng.gen_range(0, terminal_size.1-3) as u16 );
-			// Check if the snake is not on the food pos
-			for part in &self.snake.parts {
-				if food_pos == *part {
-					continue 'outer;
-				}
-			}
-			return food_pos;
-		}
-	}
-	pub fn move_snake (self: &mut Game) -> Move {
-		// Remove the last part
-		let terminal_size = get_terminal_size();
-		let mut new_head_pos = *self.snake.parts.last().unwrap();
-		match self.snake.direction {
-			Direction::Left => {
-				if new_head_pos.0 == 0 {
-					new_head_pos.0 = terminal_size.0-1;
-				} else {
-					new_head_pos.0 -= 1;
-				}
-			},
-			Direction::Right => {
-				if new_head_pos.0 == terminal_size.0-1 {
-					new_head_pos.0 = 0;
-				} else {
-					new_head_pos.0 += 1;
-				}
-			},
-			Direction::Down => {
-				if new_head_pos.1 == terminal_size.1-3 {
-					new_head_pos.1 = 0;
-				} else {
-					new_head_pos.1 += 1;
-				}
-			},
-			Direction::Up => {
-				if new_head_pos.1 == 0 {
-					new_head_pos.1 = terminal_size.1-3;
-				} else {
-					new_head_pos.1 -= 1;
-				}
-			}
-		}
-		// Iterate through all other parts to see if the snake crashed
-		for part in &self.snake.parts[1..] {
-			if new_head_pos == *part {
-				return Move::Crash
-			}
-		}
+        clear_terminal();
 
-		// If the head is on food, eat it
-		if *self.snake.parts.last().unwrap() == self.food_pos {
-			self.score += 1;
-			self.speed += 0.5;
-			self.food_pos = self.generate_food_pos();
-		} else {
-			// Only remove the last part if no food was eaten
-			self.snake.parts.remove(0);
-		}
-		
-		self.snake.parts.push(new_head_pos);
-		Move::Ok
-	}
+        // Draw the frame
+        let mut frame = String::from("");
+
+        for y in 0..terminal_size.1 {
+            for x in 0..terminal_size.0 {
+                // See if there's snake on this position
+                if self.snake.parts.contains(&(x, y)) {
+                    frame += "\x1b[97m\x1b[107m  \x1b[0m"; // A white square
+                    continue;
+                }
+
+                // If there's food in this position
+                if (x, y) == self.food_pos {
+                    frame += "\x1b[92m\x1b[102m  \x1b[0m"; // A light-green square
+                } else {
+                    frame += "  ";
+                }
+            }
+            frame += "\r\n";
+        }
+        // Remove last two characters: \r\n
+        frame.pop();
+        frame.pop();
+
+        // Add the status line at the bottom
+        let status_text = format!("Score: {}", self.score);
+        frame += &("\x1b[104m\x1b[30m".to_owned()
+            + &" ".repeat(
+                (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).floor()
+                    as usize,
+            )
+            + &status_text
+            + &" ".repeat(
+                (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).ceil()
+                    as usize
+                    - 1,
+            )
+            + "\x1b[0m\r\n");
+
+        // Print it to the terminal
+        print!("{}", frame);
+    }
+    /// Handles the user input and moves the snake accordingly
+    fn handle_input(self: &mut Game) {
+        let mut new_direction = self.snake.direction;
+
+        for event in &mut self.input {
+            match event {
+                // ctrl-c or Q to quit the game
+                InputEvent::Keyboard(KeyEvent::Ctrl('c'))
+                | InputEvent::Keyboard(KeyEvent::Char('q')) => {
+                    self.ended = true;
+                    RawScreen::disable_raw_mode()
+                        .expect("Failed to put terminal into normal mode.");
+                    return;
+                }
+                // A or Left arrow - move left
+                InputEvent::Keyboard(KeyEvent::Left) => {
+                    new_direction = Direction::Left;
+                }
+                // S or Down arrow - move down
+                InputEvent::Keyboard(KeyEvent::Down) => {
+                    new_direction = Direction::Down;
+                }
+                // D or Right arrow - move right
+                InputEvent::Keyboard(KeyEvent::Right) => {
+                    new_direction = Direction::Right;
+                }
+                // W or Up arrow - move up
+                InputEvent::Keyboard(KeyEvent::Up) => {
+                    new_direction = Direction::Up;
+                }
+                _ => (),
+            }
+        }
+        if self.snake.direction.is_opposite(&new_direction) {
+            new_direction = self.snake.direction;
+        }
+        self.snake.direction = new_direction;
+        // Move the snake
+        if let Move::Crash = self.move_snake() {
+            self.ended = true;
+        }
+    }
+
+    /// Starts the game
+    pub fn start(self: &mut Game) {
+        // Put the terminal into raw mode
+        RawScreen::into_raw_mode()
+            .expect("Failed to put terminal into raw mode.")
+            .disable_drop();
+
+        loop {
+            self.draw();
+            if self.ended {
+                RawScreen::disable_raw_mode().expect("Failed to put terminal into normal mode.");
+                return;
+            }
+            sleep(Duration::from_millis((1000f64 / self.speed as f64) as u64));
+        }
+    }
+    fn generate_food_pos(self: &mut Game) -> (u16, u16) {
+        // Get terminal size
+        let terminal_size = get_terminal_size();
+        loop {
+            let food_pos: (u16, u16) = (
+                self.rng.gen_range(0, terminal_size.0) as u16,
+                self.rng.gen_range(0, terminal_size.1 - 3) as u16,
+            );
+            // If the snake is on the food, generate another value
+
+            if self.snake.parts.contains(&food_pos) {
+                continue;
+            }
+            return food_pos;
+        }
+    }
+    fn move_snake(self: &mut Game) -> Move {
+        // Remove the last part
+        let terminal_size = get_terminal_size();
+
+        let mut new_head_pos = *self.snake.ordered_parts.back().unwrap();
+
+        let (dx, dy) = match self.snake.direction {
+            Direction::Left => (-1, 0),
+            Direction::Right => (1, 0),
+            Direction::Down => (0, 1),
+            Direction::Up => (0, -1),
+        };
+        let width = terminal_size.0 as i16;
+        let height = terminal_size.1 as i16;
+        new_head_pos.0 = (((new_head_pos.0 as i16 + dx) + width) % width) as u16;
+        new_head_pos.1 = (((new_head_pos.1 as i16 + dy) + height) % height) as u16;
+
+        // If the head is on food, eat it
+        if *self.snake.ordered_parts.back().unwrap() == self.food_pos {
+            self.score += 1;
+            self.speed += 0.1;
+            self.food_pos = self.generate_food_pos();
+        } else {
+            // Only remove the last part if no food was eaten
+            let last_part_pos = self.snake.ordered_parts.pop_front().unwrap();
+            self.snake.parts.remove(&last_part_pos);
+        }
+
+        // See if the snake crashed
+        if self.snake.parts.contains(&new_head_pos) {
+            print!("{}", 7 as char);
+            return Move::Crash;
+        }
+
+        self.snake.ordered_parts.push_back(new_head_pos);
+        self.snake.parts.insert(new_head_pos);
+        Move::Ok
+    }
 }
 
 /// Returns terminal size
 pub fn get_terminal_size() -> (u16, u16) {
-	if let Some((mut w, h)) = term_size::dimensions() {
-		// Width must be even.
-		if w%2==1 {
-			w -= 1;
-		}
-		return ((w/2) as u16, h as u16);
-	} else {
-		panic!("Can't get terminal size!");
-	}
+    if let Some((mut w, h)) = term_size::dimensions() {
+        // Width must be even.
+        if w % 2 == 1 {
+            w -= 1;
+        }
+        ((w / 2) as u16, h as u16 - 2)
+    } else {
+        panic!("Can't get terminal size!");
+    }
 }
 
 /// Clears the terminal screen, making it ready for drawing the next frame
 pub fn clear_terminal() {
-	print!("\x1b[2J\x1b[H");
+    print!("\x1b[2J\x1b[H");
 }
 
 fn main() {
     let mut game = Game::new();
     game.start();
-    println!("\x1b[5m\x1b[34m - - Congrats, your score was {}! - -\x1b[0m\x1b[25m", game.score);
+    println!(
+        "\x1b[34m\x1b[5m - - \x1b[25mCongrats, your score was {}!\x1b[5m - - \x1b[25m\x1b[0m",
+        game.score
+    );
 }
