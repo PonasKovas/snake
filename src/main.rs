@@ -3,6 +3,7 @@ use rand::prelude::*;
 use std::collections::{HashSet, VecDeque};
 use std::thread::sleep;
 use std::time::Duration;
+use std::io::prelude::*;
 
 /// A collection of all the game's components.
 pub struct Game {
@@ -108,11 +109,12 @@ impl Game {
         frame.extend_from_slice(b"\x1b[104m\x1b[30m");
         frame.extend_from_slice(" ".repeat( (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).floor() as usize).as_bytes());
         frame.extend_from_slice(status_text.as_bytes());
-        frame.extend_from_slice(" ".repeat( (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).ceil() as usize).as_bytes());
-        frame.extend_from_slice(b"\x1b[0m\r\n");
+        frame.extend_from_slice(" ".repeat( (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).ceil() as usize - 1).as_bytes());
+        frame.extend_from_slice(b"\x1b[0m");
 
         // Print it to the terminal
         print!("{}", String::from_utf8(frame).unwrap());
+        std::io::stdout().flush().unwrap();
     }
     /// Handles the user input and moves the snake accordingly
     fn handle_input(self: &mut Game) {
@@ -236,7 +238,7 @@ pub fn get_terminal_size() -> (u16, u16) {
         if w % 2 == 1 {
             w -= 1;
         }
-        ((w / 2) as u16, h as u16 - 2)
+        ((w / 2) as u16, h as u16 - 1)
     } else {
         panic!("Can't get terminal size!");
     }
