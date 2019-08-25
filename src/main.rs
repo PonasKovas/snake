@@ -102,9 +102,6 @@ impl Game {
             }
             frame += "\r\n";
         }
-        // Remove last two characters: \r\n
-        frame.pop();
-        frame.pop();
 
         // Add the status line at the bottom
         let status_text = format!("Score: {}", self.score);
@@ -117,7 +114,7 @@ impl Game {
             + &" ".repeat(
                 (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).ceil()
                     as usize
-                    - 1,
+                    - 0,
             )
             + "\x1b[0m\r\n");
 
