@@ -83,43 +83,36 @@ impl Game {
         clear_terminal();
 
         // Draw the frame
-        let mut frame = String::from("");
+        let mut frame = Vec::<u8>::new();
 
         for y in 0..terminal_size.1 {
             for x in 0..terminal_size.0 {
                 // See if there's snake on this position
                 if self.snake.parts.contains(&(x, y)) {
-                    frame += "\x1b[97m\x1b[107m  \x1b[0m"; // A white square
+                    frame.extend_from_slice(b"\x1b[97m\x1b[107m  \x1b[0m"); // A white square
                     continue;
                 }
 
                 // If there's food in this position
                 if (x, y) == self.food_pos {
-                    frame += "\x1b[92m\x1b[102m  \x1b[0m"; // A light-green square
+                    frame.extend_from_slice(b"\x1b[92m\x1b[102m  \x1b[0m"); // A light-green square
                 } else {
-                    frame += "  ";
+                    frame.extend_from_slice(b"  ");
                 }
             }
-            frame += "\r\n";
+            frame.extend_from_slice(b"\r\n");
         }
 
         // Add the status line at the bottom
         let status_text = format!("Score: {}", self.score);
-        frame += &("\x1b[104m\x1b[30m".to_owned()
-            + &" ".repeat(
-                (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).floor()
-                    as usize,
-            )
-            + &status_text
-            + &" ".repeat(
-                (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).ceil()
-                    as usize
-                    - 0,
-            )
-            + "\x1b[0m\r\n");
+        frame.extend_from_slice(b"\x1b[104m\x1b[30m");
+        frame.extend_from_slice(" ".repeat( (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).floor() as usize).as_bytes());
+        frame.extend_from_slice(status_text.as_bytes());
+        frame.extend_from_slice(" ".repeat( (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).ceil() as usize).as_bytes());
+        frame.extend_from_slice(b"\x1b[0m\r\n");
 
         // Print it to the terminal
-        print!("{}", frame);
+        print!("{}", String::from_utf8(frame).unwrap());
     }
     /// Handles the user input and moves the snake accordingly
     fn handle_input(self: &mut Game) {
@@ -136,19 +129,19 @@ impl Game {
                     return;
                 }
                 // A or Left arrow - move left
-                InputEvent::Keyboard(KeyEvent::Left) => {
+                InputEvent::Keyboard(KeyEvent::Char('a')) | InputEvent::Keyboard(KeyEvent::Left) => {
                     new_direction = Direction::Left;
                 }
                 // S or Down arrow - move down
-                InputEvent::Keyboard(KeyEvent::Down) => {
+                InputEvent::Keyboard(KeyEvent::Char('s')) | InputEvent::Keyboard(KeyEvent::Down) => {
                     new_direction = Direction::Down;
                 }
                 // D or Right arrow - move right
-                InputEvent::Keyboard(KeyEvent::Right) => {
+                InputEvent::Keyboard(KeyEvent::Char('d')) | InputEvent::Keyboard(KeyEvent::Right) => {
                     new_direction = Direction::Right;
                 }
                 // W or Up arrow - move up
-                InputEvent::Keyboard(KeyEvent::Up) => {
+                InputEvent::Keyboard(KeyEvent::Char('w')) | InputEvent::Keyboard(KeyEvent::Up) => {
                     new_direction = Direction::Up;
                 }
                 _ => (),
@@ -257,8 +250,4 @@ pub fn clear_terminal() {
 fn main() {
     let mut game = Game::new();
     game.start();
-    println!(
-        "\x1b[34m\x1b[5m - - \x1b[25mCongrats, your score was {}!\x1b[5m - - \x1b[25m\x1b[0m",
-        game.score
-    );
 }
