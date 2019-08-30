@@ -9,7 +9,7 @@ use std::io::prelude::*;
 pub struct Game {
     snake: Snake,
     food_pos: (u16, u16),
-    speed: f32, // How many times per second the snake moves and the screen is redrawed
+    speed: f32, // How many times per second the snake moves and the screen is redrawn
     input: AsyncReader,
     ended: bool,
     pub score: u32,
