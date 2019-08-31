@@ -1,9 +1,9 @@
 use crossterm_input::{input, AsyncReader, InputEvent, KeyEvent, RawScreen};
 use rand::prelude::*;
 use std::collections::{HashSet, VecDeque};
+use std::io::prelude::*;
 use std::thread::sleep;
 use std::time::Duration;
-use std::io::prelude::*;
 
 /// A collection of all the game's components.
 pub struct Game {
@@ -37,8 +37,8 @@ pub enum Move {
 }
 
 impl Direction {
-    pub fn is_opposite(self: &Direction, other: &Direction) -> bool {
-        (*self as i8 + 2) % 4 == *other as i8
+    pub fn is_opposite(self: Direction, other: Direction) -> bool {
+        (self as i8 + 2) % 4 == other as i8
     }
 }
 
@@ -81,7 +81,8 @@ impl Game {
 
         let terminal_size = get_terminal_size();
 
-        clear_terminal();
+        // Clear terminal screen
+        print!("\x1b[H");
 
         // Draw the frame
         let mut frame = Vec::<u8>::new();
@@ -104,12 +105,29 @@ impl Game {
             frame.extend_from_slice(b"\r\n");
         }
 
+        let real_terminal_size = if let Some((w, h)) = term_size::dimensions() {
+            (w as u16, h as u16)
+        } else {
+            (40, 10)
+        };
+
         // Add the status line at the bottom
         let status_text = format!("Score: {}", self.score);
         frame.extend_from_slice(b"\x1b[104m\x1b[30m");
-        frame.extend_from_slice(" ".repeat( (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).floor() as usize).as_bytes());
+        frame.extend_from_slice(
+            " ".repeat(
+                ((real_terminal_size.0 as usize - status_text.len()) as f64 / 2f64).floor()
+                    as usize,
+            )
+            .as_bytes(),
+        );
         frame.extend_from_slice(status_text.as_bytes());
-        frame.extend_from_slice(" ".repeat( (((terminal_size.0 * 2) as usize - status_text.len()) as f64 / 2f64).ceil() as usize - 1).as_bytes());
+        frame.extend_from_slice(
+            " ".repeat(
+                ((real_terminal_size.0 as usize - status_text.len()) as f64 / 2f64).ceil() as usize,
+            )
+            .as_bytes(),
+        );
         frame.extend_from_slice(b"\x1b[0m");
 
         // Print it to the terminal
@@ -126,20 +144,25 @@ impl Game {
                 InputEvent::Keyboard(KeyEvent::Ctrl('c'))
                 | InputEvent::Keyboard(KeyEvent::Char('q')) => {
                     self.ended = true;
+                    // Show cursor
+                    print!("\x1b[?25h\r\n");
                     RawScreen::disable_raw_mode()
                         .expect("Failed to put terminal into normal mode.");
                     return;
                 }
                 // A or Left arrow - move left
-                InputEvent::Keyboard(KeyEvent::Char('a')) | InputEvent::Keyboard(KeyEvent::Left) => {
+                InputEvent::Keyboard(KeyEvent::Char('a'))
+                | InputEvent::Keyboard(KeyEvent::Left) => {
                     new_direction = Direction::Left;
                 }
                 // S or Down arrow - move down
-                InputEvent::Keyboard(KeyEvent::Char('s')) | InputEvent::Keyboard(KeyEvent::Down) => {
+                InputEvent::Keyboard(KeyEvent::Char('s'))
+                | InputEvent::Keyboard(KeyEvent::Down) => {
                     new_direction = Direction::Down;
                 }
                 // D or Right arrow - move right
-                InputEvent::Keyboard(KeyEvent::Char('d')) | InputEvent::Keyboard(KeyEvent::Right) => {
+                InputEvent::Keyboard(KeyEvent::Char('d'))
+                | InputEvent::Keyboard(KeyEvent::Right) => {
                     new_direction = Direction::Right;
                 }
                 // W or Up arrow - move up
@@ -149,7 +172,7 @@ impl Game {
                 _ => (),
             }
         }
-        if self.snake.direction.is_opposite(&new_direction) {
+        if self.snake.direction.is_opposite(new_direction) {
             new_direction = self.snake.direction;
         }
         self.snake.direction = new_direction;
@@ -166,6 +189,9 @@ impl Game {
             .expect("Failed to put terminal into raw mode.")
             .disable_drop();
 
+        // Make some room for the game frames, without overwriting history text
+        // And hide the carriage
+        print!("\x1b[2J\x1b[?25l");
         loop {
             self.draw();
             if self.ended {
@@ -181,7 +207,7 @@ impl Game {
         loop {
             let food_pos: (u16, u16) = (
                 self.rng.gen_range(0, terminal_size.0) as u16,
-                self.rng.gen_range(0, terminal_size.1 - 3) as u16,
+                self.rng.gen_range(0, terminal_size.1) as u16,
             );
             // If the snake is on the food, generate another value
 
@@ -233,20 +259,11 @@ impl Game {
 
 /// Returns terminal size
 pub fn get_terminal_size() -> (u16, u16) {
-    if let Some((mut w, h)) = term_size::dimensions() {
-        // Width must be even.
-        if w % 2 == 1 {
-            w -= 1;
-        }
+    if let Some((w, h)) = term_size::dimensions() {
         ((w / 2) as u16, h as u16 - 1)
     } else {
         panic!("Can't get terminal size!");
     }
-}
-
-/// Clears the terminal screen, making it ready for drawing the next frame
-pub fn clear_terminal() {
-    print!("\x1b[2J\x1b[H");
 }
 
 fn main() {
