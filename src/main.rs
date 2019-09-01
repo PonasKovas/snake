@@ -84,6 +84,14 @@ impl Game {
         // Clear terminal screen
         print!("\x1b[H");
 
+        let real_terminal_size = if let Some((w, h)) = term_size::dimensions() {
+            (w as u16, h as u16)
+        } else {
+            (40, 10)
+        };
+
+        let right_side_padding = &" ".repeat((real_terminal_size.0 - terminal_size.0 * 2) as usize);
+
         // Draw the frame
         let mut frame = Vec::<u8>::new();
 
@@ -102,14 +110,8 @@ impl Game {
                     frame.extend_from_slice(b"  ");
                 }
             }
-            frame.extend_from_slice(b"\r\n");
+            frame.extend_from_slice(right_side_padding.as_bytes());
         }
-
-        let real_terminal_size = if let Some((w, h)) = term_size::dimensions() {
-            (w as u16, h as u16)
-        } else {
-            (40, 10)
-        };
 
         // Add the status line at the bottom
         let status_text = format!("Score: {}", self.score);
