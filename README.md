@@ -1,5 +1,5 @@
 # snake
-A simple light-weight multiplatform terminal snake game
+A simple light-weight terminal snake game
 
 ## Installation
 
