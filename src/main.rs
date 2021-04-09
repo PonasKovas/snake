@@ -154,21 +154,26 @@ impl Game {
                 }
                 // A or Left arrow - move left
                 InputEvent::Keyboard(KeyEvent::Char('a'))
+                | InputEvent::Keyboard(KeyEvent::Char('h'))
                 | InputEvent::Keyboard(KeyEvent::Left) => {
                     new_direction = Direction::Left;
                 }
                 // S or Down arrow - move down
                 InputEvent::Keyboard(KeyEvent::Char('s'))
+                | InputEvent::Keyboard(KeyEvent::Char('j'))
                 | InputEvent::Keyboard(KeyEvent::Down) => {
                     new_direction = Direction::Down;
                 }
                 // D or Right arrow - move right
                 InputEvent::Keyboard(KeyEvent::Char('d'))
+                | InputEvent::Keyboard(KeyEvent::Char('l'))
                 | InputEvent::Keyboard(KeyEvent::Right) => {
                     new_direction = Direction::Right;
                 }
                 // W or Up arrow - move up
-                InputEvent::Keyboard(KeyEvent::Char('w')) | InputEvent::Keyboard(KeyEvent::Up) => {
+                InputEvent::Keyboard(KeyEvent::Char('w')) 
+                | InputEvent::Keyboard(KeyEvent::Char('k'))
+                | InputEvent::Keyboard(KeyEvent::Up) => {
                     new_direction = Direction::Up;
                 }
                 _ => (),
