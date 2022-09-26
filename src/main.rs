@@ -14,6 +14,7 @@ pub struct Game {
     ended: bool,
     pub score: u32,
     rng: rand::rngs::ThreadRng,
+    paused: bool,
 }
 
 /// This struct defines the player: position, direction and stuff.
@@ -72,6 +73,7 @@ impl Game {
             ended: false,
             score: 0,
             rng: thread_rng(),
+            paused: false,
         }
     }
     /// Draws the frames.
@@ -171,11 +173,12 @@ impl Game {
                     new_direction = Direction::Right;
                 }
                 // W or Up arrow - move up
-                InputEvent::Keyboard(KeyEvent::Char('w')) 
+                InputEvent::Keyboard(KeyEvent::Char('w'))
                 | InputEvent::Keyboard(KeyEvent::Char('k'))
                 | InputEvent::Keyboard(KeyEvent::Up) => {
                     new_direction = Direction::Up;
                 }
+                InputEvent::Keyboard(KeyEvent::Esc) => self.paused = !self.paused,
                 _ => (),
             }
         }
@@ -225,6 +228,10 @@ impl Game {
         }
     }
     fn move_snake(self: &mut Game) -> Move {
+        if self.paused {
+            return Move::Ok;
+        }
+
         // Remove the last part
         let terminal_size = get_terminal_size();
 
