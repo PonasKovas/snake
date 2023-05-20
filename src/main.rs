@@ -4,6 +4,7 @@ use std::collections::{HashSet, VecDeque};
 use std::io::prelude::*;
 use std::thread::sleep;
 use std::time::Duration;
+use std::env;
 
 /// A collection of all the game's components.
 pub struct Game {
@@ -44,37 +45,57 @@ impl Direction {
 }
 
 impl Game {
-    pub fn new() -> Game {
+    pub fn new(start_level: u16) -> Game {
         // Get input ready
         let input = input();
         input
             .disable_mouse_mode()
             .expect("Can't disable mouse mode");
 
+        let terminal_width: u16 = get_terminal_size().0;
+
         let mut initial_snake_parts = HashSet::<(u16, u16)>::new();
-        initial_snake_parts.insert((0, 0));
-        initial_snake_parts.insert((1, 0));
-        initial_snake_parts.insert((2, 0));
-
         let mut initial_ordered_snake_parts = VecDeque::<(u16, u16)>::new();
-        initial_ordered_snake_parts.push_back((0, 0));
-        initial_ordered_snake_parts.push_back((1, 0));
-        initial_ordered_snake_parts.push_back((2, 0));
 
-        Game {
+        //create snake with size of starting level (+3 because you start with a length of 3)
+        //if the snake is longer than the terminal width it loops on the line below so it doesn't crash
+        //for example with a terminal width of 4 and a length of 15
+        //_____________
+        //| 1| 2| 3| 4|
+        //| 6| 7| 8| 5|
+        //|11|12| 9|10|
+        //|  |13|14|15|
+        //-------------
+        for i in 1..(start_level + 3) {
+            initial_snake_parts.insert(((i - (i / terminal_width)) % terminal_width, i / terminal_width));
+        }
+
+        for i in 1..(start_level + 3) {
+            initial_ordered_snake_parts.push_back(((i - (i / terminal_width)) % terminal_width, i / terminal_width));
+        }
+
+        let mut new_game: Game = Game {
             snake: Snake {
-                direction: Direction::Right,
+                //if there is less than 5 cells before the snake will crash into itself then set the direction to down
+                direction: if start_level % terminal_width >= terminal_width - 5 { Direction::Down } else { Direction::Right },
                 parts: initial_snake_parts,
                 ordered_parts: initial_ordered_snake_parts,
             },
-            food_pos: (5, 0),
-            speed: 5.0,
+            food_pos: (5 + start_level, 0),
+            speed: 5.0 + (f32::from(start_level) * 0.1),
             input: input.read_async(),
             ended: false,
-            score: 0,
+            score: u32::from(start_level),
             rng: thread_rng(),
             paused: false,
+        };
+
+        //if food is off the screen then generate a new food position
+        if 5 + start_level >= terminal_width {
+            new_game.food_pos = new_game.generate_food_pos();
         }
+
+        new_game
     }
     /// Draws the frames.
     pub fn draw(self: &mut Game) {
@@ -281,6 +302,14 @@ pub fn get_terminal_size() -> (u16, u16) {
 }
 
 fn main() {
-    let mut game = Game::new();
+    //get start level from args, default to 0
+    let args: Vec<String> = env::args().collect();
+    let start_level: u16;
+    if args.len() == 1 {
+        start_level = 0;
+    } else {
+        start_level = args[1].parse::<u16>().expect("Not a number!");
+    }
+    let mut game = Game::new(start_level);
     game.start();
 }
