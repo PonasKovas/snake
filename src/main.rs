@@ -5,6 +5,8 @@ use std::io::prelude::*;
 use std::thread::sleep;
 use std::time::Duration;
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 
 /// A collection of all the game's components.
 pub struct Game {
@@ -227,6 +229,12 @@ impl Game {
             self.draw();
             if self.ended {
                 RawScreen::disable_raw_mode().expect("Failed to put terminal into normal mode.");
+                let result: (bool, u32) = self.game_finish();
+                if result.0 {
+                    println!("New high score! You got {}", self.score);
+                } else {
+                    println!("You got {0}, the high score is {1}. Try again!", self.score, result.1);
+                }
                 return;
             }
             sleep(Duration::from_millis((1000f64 / self.speed as f64) as u64));
@@ -289,6 +297,25 @@ impl Game {
         self.snake.ordered_parts.push_back(new_head_pos);
         self.snake.parts.insert(new_head_pos);
         Move::Ok
+    }
+    //returns true if new high score, and the previous high score
+    fn game_finish(self: &mut Game) -> (bool, u32) {
+        //save preferably in $HOME/.snake but fallback to /etc/.snake
+        let mut home = match home::home_dir() {
+            Some(path) => path,
+            None => PathBuf::from(r"/etc/"),
+        };
+        home.push(".snake");
+        let path = home.as_path();
+        let mut current_high_score: u32 = 0;
+        if path.exists() {
+            let file_content = fs::read_to_string(path).expect("Unable to read high score file");
+            current_high_score = file_content.parse().unwrap();
+        }
+        if self.score > current_high_score {
+            fs::write(path, self.score.to_string()).expect("Unable to write high score file");
+        }
+        (self.score >= current_high_score, current_high_score)
     }
 }
 
