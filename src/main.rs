@@ -4,6 +4,9 @@ use std::collections::{HashSet, VecDeque};
 use std::io::prelude::*;
 use std::thread::sleep;
 use std::time::Duration;
+use std::env;
+use std::fs;
+use std::path::PathBuf;
 
 /// A collection of all the game's components.
 pub struct Game {
@@ -44,37 +47,52 @@ impl Direction {
 }
 
 impl Game {
-    pub fn new() -> Game {
+    pub fn new(start_level: u16) -> Game {
         // Get input ready
         let input = input();
         input
             .disable_mouse_mode()
             .expect("Can't disable mouse mode");
 
+        let terminal_width: u16 = get_terminal_size().0;
+
         let mut initial_snake_parts = HashSet::<(u16, u16)>::new();
-        initial_snake_parts.insert((0, 0));
-        initial_snake_parts.insert((1, 0));
-        initial_snake_parts.insert((2, 0));
-
         let mut initial_ordered_snake_parts = VecDeque::<(u16, u16)>::new();
-        initial_ordered_snake_parts.push_back((0, 0));
-        initial_ordered_snake_parts.push_back((1, 0));
-        initial_ordered_snake_parts.push_back((2, 0));
 
-        Game {
+        //create snake with size of starting level (+3 because you start with a length of 3)
+        //if the snake is longer than the terminal width it loops on the line below so it doesn't crash
+        //for example with a terminal width of 4 and a length of 15
+        //_____________
+        //| 1| 2| 3| 4|
+        //| 6| 7| 8| 5|
+        //|11|12| 9|10|
+        //|  |13|14|15|
+        //-------------
+        for i in 1..(start_level + 3) {
+            initial_snake_parts.insert(((i - (i / terminal_width)) % terminal_width, i / terminal_width));
+            initial_ordered_snake_parts.push_back(((i - (i / terminal_width)) % terminal_width, i / terminal_width));
+        }
+
+        let mut new_game: Game = Game {
             snake: Snake {
-                direction: Direction::Right,
+                //if there is less than 5 cells before the snake will crash into itself then set the direction to down
+                direction: Direction::Down,
                 parts: initial_snake_parts,
                 ordered_parts: initial_ordered_snake_parts,
             },
-            food_pos: (5, 0),
-            speed: 5.0,
+            // placeholder
+            food_pos: (0, 0),
+            speed: 5.0 + ((start_level as f32) * 0.1),
             input: input.read_async(),
             ended: false,
-            score: 0,
+            score: start_level as u32,
             rng: thread_rng(),
             paused: false,
-        }
+        };
+
+        new_game.food_pos = new_game.generate_food_pos();
+
+        new_game
     }
     /// Draws the frames.
     pub fn draw(self: &mut Game) {
@@ -206,6 +224,14 @@ impl Game {
             self.draw();
             if self.ended {
                 RawScreen::disable_raw_mode().expect("Failed to put terminal into normal mode.");
+                let result: (bool, Option<u32>) = self.game_finish();
+                if result.0 {
+                    println!("New high score! You got {}", self.score);
+                } else if let Some(highscore) = result.1 {
+                    println!("You got {}, the high score is {highscore}. Try again!", self.score);
+                } else {
+                    println!("You got {}!", self.score);
+                }
                 return;
             }
             sleep(Duration::from_millis((1000f64 / self.speed as f64) as u64));
@@ -269,6 +295,24 @@ impl Game {
         self.snake.parts.insert(new_head_pos);
         Move::Ok
     }
+    //returns true if new high score, and the previous high score
+    fn game_finish(self: &mut Game) -> (bool, Option<u32>) {
+        //save in $HOME/.snake if possible
+        if let Some(mut full_buf) = home::home_dir() {
+            full_buf.push(".snake");
+            let path = full_buf.as_path();
+            let mut current_high_score: u32 = 0;
+            if path.exists() {
+                let file_content = fs::read_to_string(path).expect("Unable to read high score file");
+                current_high_score = file_content.parse().unwrap();
+            }
+            if self.score > current_high_score {
+                fs::write(path, self.score.to_string()).expect("Unable to write high score file");
+            }
+            return (self.score >= current_high_score, Some(current_high_score))
+        }
+        (false, None)
+    }
 }
 
 /// Returns terminal size
@@ -281,6 +325,14 @@ pub fn get_terminal_size() -> (u16, u16) {
 }
 
 fn main() {
-    let mut game = Game::new();
+    //get start level from args, default to 0
+    let args: Vec<String> = env::args().collect();
+    let start_level: u16;
+    if args.len() == 1 {
+        start_level = 0;
+    } else {
+        start_level = args[1].parse::<u16>().expect("Not a number!");
+    }
+    let mut game = Game::new(start_level);
     game.start();
 }
