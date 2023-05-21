@@ -54,8 +54,7 @@ impl Game {
             .disable_mouse_mode()
             .expect("Can't disable mouse mode");
 
-        let terminal_size: (u16, u16) = get_terminal_size();
-        let terminal_width: u16 = terminal_size.0;
+        let terminal_width: u16 = get_terminal_size().0;
 
         let mut initial_snake_parts = HashSet::<(u16, u16)>::new();
         let mut initial_ordered_snake_parts = VecDeque::<(u16, u16)>::new();
@@ -81,8 +80,8 @@ impl Game {
                 parts: initial_snake_parts,
                 ordered_parts: initial_ordered_snake_parts,
             },
-            //set the food position to outside the screen so it won't be drawn and we can generate a new position
-            food_pos: (terminal_width, terminal_size.1),
+            // placeholder
+            food_pos: (0, 0),
             speed: 5.0 + ((start_level as f32) * 0.1),
             input: input.read_async(),
             ended: false,
@@ -228,8 +227,8 @@ impl Game {
                 let result: (bool, Option<u32>) = self.game_finish();
                 if result.0 {
                     println!("New high score! You got {}", self.score);
-                } else if result.1.is_some() {
-                    println!("You got {0}, the high score is {1}. Try again!", self.score, result.1.unwrap());
+                } else if let Some(highscore) = result.1 {
+                    println!("You got {}, the high score is {highscore}. Try again!", self.score);
                 } else {
                     println!("You got {}!", self.score);
                 }
@@ -299,9 +298,7 @@ impl Game {
     //returns true if new high score, and the previous high score
     fn game_finish(self: &mut Game) -> (bool, Option<u32>) {
         //save in $HOME/.snake if possible
-        let home = home::home_dir();
-        if home.is_some() {
-            let mut full_buf: PathBuf = home.unwrap();
+        if let Some(mut full_buf) = home::home_dir() {
             full_buf.push(".snake");
             let path = full_buf.as_path();
             let mut current_high_score: u32 = 0;
