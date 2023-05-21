@@ -28,4 +28,4 @@ To start at a given level in order to skip the slow start of the game, pass a se
 
 When you die, the game exits, so if you want to play again, launch it again.
 
-To clear the high score, delete the file at `$HOME/.snake` or `/etc/.snake`.
+To clear the high score, delete the file at `$HOME/.snake`.

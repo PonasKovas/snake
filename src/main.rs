@@ -54,7 +54,8 @@ impl Game {
             .disable_mouse_mode()
             .expect("Can't disable mouse mode");
 
-        let terminal_width: u16 = get_terminal_size().0;
+        let terminal_size: (u16, u16) = get_terminal_size();
+        let terminal_width: u16 = terminal_size.0;
 
         let mut initial_snake_parts = HashSet::<(u16, u16)>::new();
         let mut initial_ordered_snake_parts = VecDeque::<(u16, u16)>::new();
@@ -70,32 +71,27 @@ impl Game {
         //-------------
         for i in 1..(start_level + 3) {
             initial_snake_parts.insert(((i - (i / terminal_width)) % terminal_width, i / terminal_width));
-        }
-
-        for i in 1..(start_level + 3) {
             initial_ordered_snake_parts.push_back(((i - (i / terminal_width)) % terminal_width, i / terminal_width));
         }
 
         let mut new_game: Game = Game {
             snake: Snake {
                 //if there is less than 5 cells before the snake will crash into itself then set the direction to down
-                direction: if start_level % terminal_width >= terminal_width - 5 { Direction::Down } else { Direction::Right },
+                direction: Direction::Down,
                 parts: initial_snake_parts,
                 ordered_parts: initial_ordered_snake_parts,
             },
-            food_pos: (5 + start_level, 0),
-            speed: 5.0 + (f32::from(start_level) * 0.1),
+            //set the food position to outside the screen so it won't be drawn and we can generate a new position
+            food_pos: (terminal_width, terminal_size.1),
+            speed: 5.0 + ((start_level as f32) * 0.1),
             input: input.read_async(),
             ended: false,
-            score: u32::from(start_level),
+            score: start_level as u32,
             rng: thread_rng(),
             paused: false,
         };
 
-        //if food is off the screen then generate a new food position
-        if 5 + start_level >= terminal_width {
-            new_game.food_pos = new_game.generate_food_pos();
-        }
+        new_game.food_pos = new_game.generate_food_pos();
 
         new_game
     }
@@ -229,11 +225,13 @@ impl Game {
             self.draw();
             if self.ended {
                 RawScreen::disable_raw_mode().expect("Failed to put terminal into normal mode.");
-                let result: (bool, u32) = self.game_finish();
+                let result: (bool, Option<u32>) = self.game_finish();
                 if result.0 {
                     println!("New high score! You got {}", self.score);
+                } else if result.1.is_some() {
+                    println!("You got {0}, the high score is {1}. Try again!", self.score, result.1.unwrap());
                 } else {
-                    println!("You got {0}, the high score is {1}. Try again!", self.score, result.1);
+                    println!("You got {}!", self.score);
                 }
                 return;
             }
@@ -299,23 +297,24 @@ impl Game {
         Move::Ok
     }
     //returns true if new high score, and the previous high score
-    fn game_finish(self: &mut Game) -> (bool, u32) {
-        //save preferably in $HOME/.snake but fallback to /etc/.snake
-        let mut home = match home::home_dir() {
-            Some(path) => path,
-            None => PathBuf::from(r"/etc/"),
-        };
-        home.push(".snake");
-        let path = home.as_path();
-        let mut current_high_score: u32 = 0;
-        if path.exists() {
-            let file_content = fs::read_to_string(path).expect("Unable to read high score file");
-            current_high_score = file_content.parse().unwrap();
+    fn game_finish(self: &mut Game) -> (bool, Option<u32>) {
+        //save in $HOME/.snake if possible
+        let home = home::home_dir();
+        if home.is_some() {
+            let mut full_buf: PathBuf = home.unwrap();
+            full_buf.push(".snake");
+            let path = full_buf.as_path();
+            let mut current_high_score: u32 = 0;
+            if path.exists() {
+                let file_content = fs::read_to_string(path).expect("Unable to read high score file");
+                current_high_score = file_content.parse().unwrap();
+            }
+            if self.score > current_high_score {
+                fs::write(path, self.score.to_string()).expect("Unable to write high score file");
+            }
+            return (self.score >= current_high_score, Some(current_high_score))
         }
-        if self.score > current_high_score {
-            fs::write(path, self.score.to_string()).expect("Unable to write high score file");
-        }
-        (self.score >= current_high_score, current_high_score)
+        (false, None)
     }
 }
 
